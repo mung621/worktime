@@ -188,6 +188,35 @@
     border-radius: 10px; padding: 7px 11px; font-size: 12px; cursor: pointer; font-weight:600;
   }
   .cal-tools button:hover { border-color: var(--red); color: var(--red); }
+  /* custom holiday */
+  .custom-hol { margin-top: 16px; padding-top: 14px; border-top: 2px dashed var(--line); }
+  .ch-title { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
+  .ch-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ch-row input[type="date"], .ch-row input[type="text"] {
+    background: var(--bg); border: 2px solid var(--line); border-radius: 10px;
+    color: var(--text); font-size: 13px; padding: 7px 9px; font-weight:600;
+  }
+  .ch-row input[type="date"] { flex: 0 0 auto; }
+  .ch-row input[type="text"] { flex: 1 1 110px; min-width: 0; }
+  .ch-row input:focus { outline: none; border-color: var(--red); background:#fff; }
+  .ch-row button {
+    flex: 0 0 auto; background: var(--red); border: 2px solid var(--red); color:#fff;
+    border-radius: 10px; padding: 7px 16px; font-size: 13px; font-weight:800; cursor: pointer;
+  }
+  .ch-row button:hover { filter: brightness(1.05); }
+  .ch-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .ch-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--red-soft); color: #c0392b; border: 1.5px solid #ffc9c9;
+    border-radius: 14px; padding: 4px 6px 4px 11px; font-size: 12px; font-weight:700;
+  }
+  .ch-item button {
+    background: transparent; border: none; color: #c0392b; cursor: pointer;
+    font-size: 15px; line-height: 1; padding: 0 4px; border-radius: 50%;
+  }
+  .ch-item button:hover { background: rgba(192,57,43,.15); }
+  .ch-empty { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
   footer { text-align:center; color: var(--muted); font-size:11px; margin-top:24px; }
 
   /* ---------- 모바일 웹 ---------- */
@@ -343,6 +372,17 @@
         <span><i class="sw" style="background:var(--blue)"></i>클릭 2번 = 연차</span>
         <span><i class="sw" style="background:var(--bg);border:1px solid var(--line)"></i>클릭 3번 = 선택해제</span>
       </div>
+
+      <div class="custom-hol">
+        <div class="ch-title">🚩 공휴일·대체휴일 직접 등록</div>
+        <div class="ch-row">
+          <input type="date" id="chDate" />
+          <input type="text" id="chName" placeholder="이름 (예: 임시공휴일)" maxlength="20" />
+          <button id="chAdd">추가</button>
+        </div>
+        <div id="chList" class="ch-list"></div>
+        <div class="note" style="margin-top:2px;">등록한 휴일은 빨갛게 표시되고 근무일에서 제외돼요. 이 기기 브라우저에 저장돼 껐다 켜도 유지돼요.</div>
+      </div>
     </div>
   </div>
   <footer>A je to! — 패트와 매트와 함께하는 근무시간 계산기 🔧🔨</footer>
@@ -385,6 +425,16 @@ let mode = "auto";
 // 월별 날짜 상태: Map(key -> 'work' | 'leave'), 없으면 미선택
 const stateByMonth = {};
 
+// 사용자가 직접 등록한 공휴일: { "YYYY-MM-DD": "이름" } — localStorage 저장
+const CUSTOM_HOL_STORE = "worktime-custom-holidays-v1";
+let customHolidays = {};
+try { customHolidays = JSON.parse(localStorage.getItem(CUSTOM_HOL_STORE)) || {}; } catch(e){ customHolidays = {}; }
+function saveCustomHolidays(){
+  try { localStorage.setItem(CUSTOM_HOL_STORE, JSON.stringify(customHolidays)); } catch(e){}
+}
+// 기본 공휴일 + 사용자 등록 공휴일 통합 조회
+function holName(k){ return HOLIDAYS[k] || customHolidays[k] || null; }
+
 function pad(n){ return String(n).padStart(2,"0"); }
 function key(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
 function monthKey(y,m){ return `${y}-${m}`; }
@@ -398,7 +448,7 @@ function defaultState(y,m){
     const dow = date.getDay();
     const k = key(y,m,d);
     const isWeekend = dow===0 || dow===6;
-    const isHoliday = !!HOLIDAYS[k];
+    const isHoliday = !!holName(k);
     const isTodayOrPast = date <= TODAY;   // 오늘 포함 이전은 제외
     if(!isWeekend && !isHoliday && !isTodayOrPast) map.set(k, 'work');
   }
@@ -435,7 +485,7 @@ function renderCalendar(){
     cell.className = "cell";
     if(dow===0) cell.classList.add("sun");
     if(dow===6) cell.classList.add("sat");
-    if(HOLIDAYS[k]) cell.classList.add("sun");
+    if(holName(k)) cell.classList.add("sun");
     if(date < TODAY) cell.classList.add("past");
     if(date.getTime() === TODAY.getTime()) cell.classList.add("today");
     const cur = st.get(k);
@@ -447,10 +497,11 @@ function renderCalendar(){
     num.textContent = d;
     cell.appendChild(num);
 
-    if(HOLIDAYS[k]){
+    const hn = holName(k);
+    if(hn){
       const h = document.createElement("div");
       h.className = "hname";
-      h.textContent = HOLIDAYS[k];
+      h.textContent = hn;
       cell.appendChild(h);
     }
     const dot = document.createElement("div");
@@ -589,11 +640,55 @@ document.getElementById("selAllWeekday").onclick = ()=>{
     const date = new Date(viewY, viewM, d);
     const dow = date.getDay();
     const k = key(viewY, viewM, d);
-    if(dow!==0 && dow!==6 && !HOLIDAYS[k]) st.set(k, 'work');
+    if(dow!==0 && dow!==6 && !holName(k)) st.set(k, 'work');
   }
   renderCalendar(); compute();
 };
 document.getElementById("clearSel").onclick = ()=>{ getState(viewY, viewM).clear(); renderCalendar(); compute(); };
+
+/* ---------- 공휴일 직접 등록 ---------- */
+function renderChList(){
+  const box = document.getElementById("chList");
+  box.innerHTML = "";
+  const keys = Object.keys(customHolidays).sort();
+  if(keys.length === 0){
+    box.innerHTML = '<div class="ch-empty">아직 등록한 휴일이 없어요.</div>';
+    return;
+  }
+  keys.forEach(k=>{
+    const item = document.createElement("div");
+    item.className = "ch-item";
+    const label = document.createElement("span");
+    label.textContent = `${k} ${customHolidays[k]}`;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "×";
+    del.title = "삭제";
+    del.onclick = ()=>{
+      delete customHolidays[k];
+      saveCustomHolidays();
+      renderChList(); renderCalendar(); compute();
+    };
+    item.appendChild(label);
+    item.appendChild(del);
+    box.appendChild(item);
+  });
+}
+document.getElementById("chAdd").onclick = ()=>{
+  const dEl = document.getElementById("chDate");
+  const nEl = document.getElementById("chName");
+  const d = dEl.value;                       // "YYYY-MM-DD"
+  if(!d){ dEl.focus(); return; }
+  const name = (nEl.value || "").trim() || "공휴일";
+  customHolidays[d] = name;
+  saveCustomHolidays();
+  // 이미 근무일/연차로 선택돼 있으면 해제 (휴일이므로 근무일에서 제외)
+  const [yy,mm] = d.split("-").map(Number);
+  const st = getState(yy, mm-1);
+  st.delete(d);
+  dEl.value = ""; nEl.value = "";
+  renderChList(); renderCalendar(); compute();
+};
 
 /* ---------- 시간 입력값 자동 저장 (브라우저 localStorage) ---------- */
 /* 기기·브라우저별로 저장되며, 껐다 켜도 유지됨. 캘린더 선택은 저장 안 함(달마다 새로) */
@@ -619,6 +714,7 @@ function loadInputs(){
 
 /* ---------- 초기화 ---------- */
 loadInputs();
+renderChList();
 renderCalendar();
 compute();
 </script>
