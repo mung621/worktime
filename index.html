@@ -278,7 +278,7 @@
     <div class="cap"><b id="capDays">–</b> 기준, 하루에 이만큼 일하면 딱이에요</div>
     <div class="big" id="perDay">– <small>시간</small></div>
     <div class="meta">
-      <div class="chip">잔여 근무시간<b id="mRemain">–</b></div>
+      <div class="chip">남은 근무시간<b id="mRemain">–</b></div>
       <div class="chip">남은 근무일수<b id="mDays">–</b></div>
     </div>
     <div class="warnNote" id="warnNote"></div>
@@ -288,7 +288,7 @@
     <!-- inputs -->
     <div class="card">
       <h2><span class="em">📌</span> 이달 지정 총 근무시간</h2>
-      <div class="note" style="margin-top:-6px;margin-bottom:12px;">회사가 이번 달에 정한 총 근무시간이에요. (선택 입력 — 채우면 진행률을 함께 보여줘요)</div>
+      <div class="note" style="margin-top:-6px;margin-bottom:12px;">회사가 이번 달에 정한 총 근무시간이에요. <b>남은 시간 = 지정 − 근무한 시간</b>으로 계산하니 꼭 입력하세요.</div>
 
       <div class="row">
         <div class="field">
@@ -309,7 +309,7 @@
         </div>
       </div>
 
-      <h2 style="margin-top:24px;"><span class="em">⏳</span> 잔여 근무시간</h2>
+      <h2 style="margin-top:24px;"><span class="em">⏳</span> 근무시간 (지금까지 실제 근무한 시간)</h2>
       <div class="row">
         <div class="field">
           <label><span class="tag">소정</span> 시간</label>
@@ -328,7 +328,7 @@
           <input type="number" id="otMins" min="0" max="59" step="1" value="0" />
         </div>
       </div>
-      <div class="note">근태시스템의 잔여 근무시간을 <b>소정 / 연장</b>으로 입력하면 합산해서 계산해요. 잔여 합계: <b id="sumLabel">–</b></div>
+      <div class="note">근태시스템의 <b>실제 근무한 시간</b>을 소정 / 연장으로 입력하세요. 근무 합계: <b id="sumLabel">–</b></div>
 
       <div id="progressBox" style="margin-top:14px;">
         <div class="prog-top"><span id="progLabel">이번 달 진행률</span><b id="progPct">–</b></div>
@@ -572,21 +572,23 @@ function val(id){ return parseInt(document.getElementById(id).value) || 0; }
 function compute(){
   const regMin = val("regHours")*60 + val("regMins");
   const otMin  = val("otHours")*60  + val("otMins");
-  const totalMin = regMin + otMin;            // 잔여 합계
-  document.getElementById("sumLabel").textContent = fmtHM(totalMin);
+  const workedMin = regMin + otMin;            // 지금까지 실제 근무한 시간 합계
+  document.getElementById("sumLabel").textContent = fmtHM(workedMin);
 
-  // 이달 지정 총 근무시간 & 진행률
+  // 이달 지정 총 근무시간 → 남은 시간 = 지정 − 근무
   const desigMin = (val("totRegHours")*60 + val("totRegMins")) + (val("totOtHours")*60 + val("totOtMins"));
+  const remainingMin = desigMin - workedMin;   // 남은 근무시간
+
+  // 진행률 = 근무한 시간 / 지정 총시간
   const progBox = document.getElementById("progressBox");
   if(desigMin > 0){
     progBox.style.display = "block";
-    const worked = Math.max(0, Math.min(desigMin, desigMin - totalMin));
-    const pct = Math.max(0, Math.min(100, (worked/desigMin)*100));
+    const pct = Math.max(0, Math.min(100, (workedMin/desigMin)*100));
     document.getElementById("progFill").style.width = pct.toFixed(1) + "%";
     document.getElementById("progPct").textContent = pct.toFixed(1) + "%";
     document.getElementById("progDetail").innerHTML =
-      `채운 시간 <b>${fmtHM(worked)}</b> / 지정 <b>${fmtHM(desigMin)}</b>` +
-      (totalMin > desigMin ? ` · ⚠️ 잔여가 지정 총시간보다 큽니다` : "");
+      `채운 시간 <b>${fmtHM(workedMin)}</b> / 지정 <b>${fmtHM(desigMin)}</b>` +
+      (workedMin > desigMin ? ` · ⚠️ 근무시간이 지정 총시간을 넘었어요` : "");
   } else {
     progBox.style.display = "none";
   }
@@ -601,11 +603,11 @@ function compute(){
     leaveDays = val("manualLeave");
   }
 
-  // 연차: 1일당 8시간(480분) 채워짐 → 잔여시간에서 차감
+  // 연차: 1일당 8시간(480분) 채워짐 → 남은시간에서 차감
   const leaveMin = leaveDays * 480;
-  const workTarget = totalMin - leaveMin;   // 실제 근무로 채워야 할 시간
+  const workTarget = remainingMin - leaveMin;   // 실제 근무로 채워야 할 시간
 
-  document.getElementById("mRemain").textContent = fmtHM(totalMin);
+  document.getElementById("mRemain").textContent = fmtHM(remainingMin);
   document.getElementById("mDays").textContent = `근무 ${workdays}일` + (leaveDays>0 ? ` · 연차 ${leaveDays}일` : "");
   document.getElementById("capDays").textContent = `남은 근무 ${workdays}일`;
 
@@ -613,10 +615,24 @@ function compute(){
   const warn = document.getElementById("warnNote");
   const leavePart = leaveDays>0 ? ` (연차 ${leaveDays}일이 ${fmtHM(leaveMin)}를 채워줘요)` : "";
 
+  // 지정 총 근무시간 미입력 시 안내
+  if(desigMin <= 0){
+    perDayEl.innerHTML = "– <small>시간</small>";
+    warn.innerHTML = "먼저 <b>이달 지정 총 근무시간</b>을 입력하세요. (남은 시간 = 지정 − 근무한 시간)";
+    return;
+  }
+
+  // 이미 다 채운 경우
+  if(remainingMin <= 0){
+    perDayEl.innerHTML = `0<small>시간</small> 0<small>분</small>`;
+    warn.innerHTML = `이미 지정 근무시간 ${fmtHM(desigMin)}를 다 채웠어요! (초과 ${fmtHM(-remainingMin)}) 🎉`;
+    return;
+  }
+
   if(workdays <= 0){
     perDayEl.innerHTML = "– <small>시간</small>";
     if(leaveDays>0 && workTarget<=0){
-      warn.innerHTML = `남은 근무일이 <b>0일</b>인데, 연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 잔여 ${fmtHM(totalMin)}가 모두 채워져요. 더 일 안 해도 돼요! 🎉`;
+      warn.innerHTML = `남은 근무일이 <b>0일</b>인데, 연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 남은 ${fmtHM(remainingMin)}가 모두 채워져요. 더 일 안 해도 돼요! 🎉`;
     } else {
       warn.innerHTML = "남은 <b>근무일</b>이 0일이에요. 캘린더에서 근무일을 선택하거나 직접 입력하세요." + leavePart;
     }
@@ -625,7 +641,7 @@ function compute(){
 
   if(workTarget <= 0){
     perDayEl.innerHTML = `0<small>시간</small> 0<small>분</small>`;
-    warn.innerHTML = `연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 잔여 ${fmtHM(totalMin)}가 다 채워져요. 남은 근무일엔 사실상 일 안 해도 돼요! 🎉`;
+    warn.innerHTML = `연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 남은 ${fmtHM(remainingMin)}가 다 채워져요. 남은 근무일엔 사실상 일 안 해도 돼요! 🎉`;
     return;
   }
 
@@ -639,7 +655,7 @@ function compute(){
   if(perDayMin > 480){
     warn.innerHTML = `하루 권장 근무가 <b>8시간</b>을 넘어요 (약 ${decimal}시간). 근무일·연차를 더 확보하거나 일정을 앞당기는 게 좋아요!` + leavePart;
   } else {
-    warn.innerHTML = `매일 <b>${phh}시간 ${pmm}분</b>(약 ${decimal}시간)씩 일하면 이달 잔여 근무시간을 딱 맞게 채워요.${leavePart} A je to! 🛠️`;
+    warn.innerHTML = `매일 <b>${phh}시간 ${pmm}분</b>(약 ${decimal}시간)씩 일하면 이달 남은 근무시간을 딱 맞게 채워요.${leavePart} A je to! 🛠️`;
   }
 }
 
