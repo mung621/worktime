@@ -188,6 +188,17 @@
     border-radius: 10px; padding: 7px 11px; font-size: 12px; cursor: pointer; font-weight:600;
   }
   .cal-tools button:hover { border-color: var(--red); color: var(--red); }
+  /* save bar */
+  .save-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .save-bar #saveBtn {
+    background: var(--good); border: 2px solid var(--good); color: #fff;
+    border-radius: 12px; padding: 10px 20px; font-size: 14px; font-weight: 800; cursor: pointer;
+  }
+  .save-bar #saveBtn:hover { filter: brightness(1.05); }
+  .save-bar #saveBtn:active { transform: translateY(1px); }
+  .save-status { font-size: 13px; font-weight: 700; color: var(--good); opacity: 0; transition: opacity .2s; }
+  .save-status.show { opacity: 1; }
+
   /* custom holiday */
   .custom-hol { margin-top: 16px; padding-top: 14px; border-top: 2px dashed var(--line); }
   .ch-title { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
@@ -366,6 +377,10 @@
         <button id="selFuture">내일부터 평일 선택</button>
         <button id="selAllWeekday">이달 평일 전체</button>
         <button id="clearSel">전체 해제</button>
+      </div>
+      <div class="save-bar">
+        <button id="saveBtn">💾 저장하기</button>
+        <span id="saveStatus" class="save-status"></span>
       </div>
       <div class="legend">
         <span><i class="sw" style="background:var(--good)"></i>클릭 1번 = 근무일</span>
@@ -661,6 +676,20 @@ document.getElementById("selAllWeekday").onclick = ()=>{
   saveState(); renderCalendar(); compute();
 };
 document.getElementById("clearSel").onclick = ()=>{ getState(viewY, viewM).clear(); saveState(); renderCalendar(); compute(); };
+
+let saveStatusTimer = null;
+document.getElementById("saveBtn").onclick = ()=>{
+  // 현재 화면의 모든 설정을 한 번에 저장
+  getState(viewY, viewM);            // 현재 달 상태 보장
+  saveState();
+  saveInputs();
+  saveCustomHolidays();
+  const s = document.getElementById("saveStatus");
+  s.textContent = "저장됨 ✓ (껐다 켜도 유지돼요)";
+  s.classList.add("show");
+  if(saveStatusTimer) clearTimeout(saveStatusTimer);
+  saveStatusTimer = setTimeout(()=> s.classList.remove("show"), 2500);
+};
 
 /* ---------- 공휴일 직접 등록 ---------- */
 function renderChList(){
