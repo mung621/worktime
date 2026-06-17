@@ -188,15 +188,17 @@
     border-radius: 10px; padding: 7px 11px; font-size: 12px; cursor: pointer; font-weight:600;
   }
   .cal-tools button:hover { border-color: var(--red); color: var(--red); }
-  /* save bar */
-  .save-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
-  .save-bar #saveBtn {
-    background: var(--good); border: 2px solid var(--good); color: #fff;
-    border-radius: 12px; padding: 10px 20px; font-size: 14px; font-weight: 800; cursor: pointer;
+  /* save button (캘린더 제목 옆) */
+  .cal-h2 { justify-content: space-between; }
+  .save-inline { display: inline-flex; align-items: center; gap: 8px; }
+  #saveBtn {
+    background: var(--good); border: 1.5px solid var(--good); color: #fff;
+    border-radius: 9px; padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer;
+    white-space: nowrap;
   }
-  .save-bar #saveBtn:hover { filter: brightness(1.05); }
-  .save-bar #saveBtn:active { transform: translateY(1px); }
-  .save-status { font-size: 13px; font-weight: 700; color: var(--good); opacity: 0; transition: opacity .2s; }
+  #saveBtn:hover { filter: brightness(1.05); }
+  #saveBtn:active { transform: translateY(1px); }
+  .save-status { font-size: 11px; font-weight: 700; color: var(--good); opacity: 0; transition: opacity .2s; white-space: nowrap; }
   .save-status.show { opacity: 1; }
 
   /* custom holiday */
@@ -362,7 +364,13 @@
 
     <!-- calendar -->
     <div class="card">
-      <h2><span class="em">🗓️</span> 근무 캘린더</h2>
+      <h2 class="cal-h2">
+        <span><span class="em">🗓️</span> 근무 캘린더</span>
+        <span class="save-inline">
+          <span id="saveStatus" class="save-status"></span>
+          <button id="saveBtn">💾 캘린더 저장</button>
+        </span>
+      </h2>
       <div class="cal-head">
         <button id="prevM">‹</button>
         <div class="title" id="calTitle">–</div>
@@ -377,10 +385,6 @@
         <button id="selFuture">내일부터 평일 선택</button>
         <button id="selAllWeekday">이달 평일 전체</button>
         <button id="clearSel">전체 해제</button>
-      </div>
-      <div class="save-bar">
-        <button id="saveBtn">💾 저장하기</button>
-        <span id="saveStatus" class="save-status"></span>
       </div>
       <div class="legend">
         <span><i class="sw" style="background:var(--good)"></i>클릭 1번 = 근무일</span>
@@ -685,7 +689,7 @@ document.getElementById("saveBtn").onclick = ()=>{
   saveInputs();
   saveCustomHolidays();
   const s = document.getElementById("saveStatus");
-  s.textContent = "저장됨 ✓ (껐다 켜도 유지돼요)";
+  s.textContent = "저장됨 ✓";
   s.classList.add("show");
   if(saveStatusTimer) clearTimeout(saveStatusTimer);
   saveStatusTimer = setTimeout(()=> s.classList.remove("show"), 2500);
