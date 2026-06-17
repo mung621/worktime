@@ -238,8 +238,6 @@
     <div class="meta">
       <div class="chip">잔여 근무시간<b id="mRemain">–</b></div>
       <div class="chip">남은 근무일수<b id="mDays">–</b></div>
-      <div class="chip">8시간씩이면<b id="mEight">–</b></div>
-      <div class="chip" id="slackChip">여유<b id="mSlack">–</b></div>
     </div>
     <div class="warnNote" id="warnNote"></div>
   </div>
@@ -341,11 +339,9 @@
         <button id="clearSel">전체 해제</button>
       </div>
       <div class="legend">
-        <span><i class="sw" style="background:var(--good)"></i>근무일</span>
-        <span><i class="sw" style="background:var(--blue)"></i>연차</span>
-        <span><i class="sw" style="background:var(--yellow)"></i>오늘</span>
-        <span><i class="sw" style="background:var(--red)"></i>공휴일</span>
-        <span style="opacity:.5"><i class="sw" style="background:var(--bg);border:1px solid var(--line)"></i>지난날</span>
+        <span><i class="sw" style="background:var(--good)"></i>클릭 1번 = 근무일</span>
+        <span><i class="sw" style="background:var(--blue)"></i>클릭 2번 = 연차</span>
+        <span><i class="sw" style="background:var(--bg);border:1px solid var(--line)"></i>클릭 3번 = 선택해제</span>
       </div>
     </div>
   </div>
@@ -522,15 +518,11 @@ function compute(){
   document.getElementById("capDays").textContent = `남은 근무 ${workdays}일`;
 
   const perDayEl = document.getElementById("perDay");
-  const eightEl = document.getElementById("mEight");
-  const slackEl = document.getElementById("mSlack");
-  const slackChip = document.getElementById("slackChip");
   const warn = document.getElementById("warnNote");
   const leavePart = leaveDays>0 ? ` (연차 ${leaveDays}일이 ${fmtHM(leaveMin)}를 채워줘요)` : "";
 
   if(workdays <= 0){
     perDayEl.innerHTML = "– <small>시간</small>";
-    eightEl.textContent = "–"; slackEl.textContent = "–";
     if(leaveDays>0 && workTarget<=0){
       warn.innerHTML = `남은 근무일이 <b>0일</b>인데, 연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 잔여 ${fmtHM(totalMin)}가 모두 채워져요. 더 일 안 해도 돼요! 🎉`;
     } else {
@@ -541,10 +533,6 @@ function compute(){
 
   if(workTarget <= 0){
     perDayEl.innerHTML = `0<small>시간</small> 0<small>분</small>`;
-    eightEl.textContent = `0일`;
-    slackChip.childNodes[0].textContent = "8시간 대비 여유";
-    slackEl.textContent = fmtHM(workdays*480);
-    slackEl.style.color = "var(--good)";
     warn.innerHTML = `연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 잔여 ${fmtHM(totalMin)}가 다 채워져요. 남은 근무일엔 사실상 일 안 해도 돼요! 🎉`;
     return;
   }
@@ -555,19 +543,6 @@ function compute(){
   if(pmm===60){ phh+=1; pmm=0; }
   const decimal = (perDayMin/60).toFixed(2);
   perDayEl.innerHTML = `${phh}<small>시간</small> ${pmm}<small>분</small>`;
-
-  eightEl.textContent = `약 ${(workTarget/480).toFixed(1)}일`;
-
-  const slack = workdays*480 - workTarget;
-  if(slack >= 0){
-    slackChip.childNodes[0].textContent = "8시간 대비 여유";
-    slackEl.textContent = fmtHM(slack);
-    slackEl.style.color = "var(--good)";
-  } else {
-    slackChip.childNodes[0].textContent = "8시간 대비 초과";
-    slackEl.textContent = fmtHM(-slack);
-    slackEl.style.color = "var(--bad)";
-  }
 
   if(perDayMin > 480){
     warn.innerHTML = `하루 권장 근무가 <b>8시간</b>을 넘어요 (약 ${decimal}시간). 근무일·연차를 더 확보하거나 일정을 앞당기는 게 좋아요!` + leavePart;
@@ -614,11 +589,30 @@ document.getElementById("selAllWeekday").onclick = ()=>{
 };
 document.getElementById("clearSel").onclick = ()=>{ getState(viewY, viewM).clear(); renderCalendar(); compute(); };
 
+/* ---------- 시간 입력값 자동 저장 (브라우저 localStorage) ---------- */
+/* 기기·브라우저별로 저장되며, 껐다 켜도 유지됨. 캘린더 선택은 저장 안 함(달마다 새로) */
+const SAVE_KEYS = ["totRegHours","totRegMins","totOtHours","totOtMins","regHours","regMins","otHours","otMins"];
+const STORE = "worktime-inputs-v1";
+function saveInputs(){
+  const data = {};
+  SAVE_KEYS.forEach(id => data[id] = document.getElementById(id).value);
+  try { localStorage.setItem(STORE, JSON.stringify(data)); } catch(e){}
+}
+function loadInputs(){
+  try {
+    const raw = localStorage.getItem(STORE);
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    SAVE_KEYS.forEach(id => { if(data[id] !== undefined) document.getElementById(id).value = data[id]; });
+  } catch(e){}
+}
+
 ["totRegHours","totRegMins","totOtHours","totOtMins","regHours","regMins","otHours","otMins","manualDays","manualLeave"].forEach(id=>{
-  document.getElementById(id).addEventListener("input", compute);
+  document.getElementById(id).addEventListener("input", ()=>{ saveInputs(); compute(); });
 });
 
 /* ---------- 초기화 ---------- */
+loadInputs();
 renderCalendar();
 compute();
 </script>
