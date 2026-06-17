@@ -435,6 +435,19 @@ function saveCustomHolidays(){
 // 기본 공휴일 + 사용자 등록 공휴일 통합 조회
 function holName(k){ return HOLIDAYS[k] || customHolidays[k] || null; }
 
+// 캘린더 선택(근무일/연차) 저장: { "Y-M": [[key,'work'|'leave'], ...] }
+const STATE_STORE = "worktime-calendar-v1";
+let savedState = {};
+try { savedState = JSON.parse(localStorage.getItem(STATE_STORE)) || {}; } catch(e){ savedState = {}; }
+function saveState(){
+  const obj = {};
+  for(const mk in stateByMonth){
+    const entries = Array.from(stateByMonth[mk].entries());
+    if(entries.length) obj[mk] = entries;
+  }
+  try { localStorage.setItem(STATE_STORE, JSON.stringify(obj)); } catch(e){}
+}
+
 function pad(n){ return String(n).padStart(2,"0"); }
 function key(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
 function monthKey(y,m){ return `${y}-${m}`; }
@@ -456,7 +469,10 @@ function defaultState(y,m){
 }
 function getState(y,m){
   const mk = monthKey(y,m);
-  if(!stateByMonth[mk]) stateByMonth[mk] = defaultState(y,m);
+  if(!stateByMonth[mk]){
+    if(savedState[mk]) stateByMonth[mk] = new Map(savedState[mk]);   // 저장된 선택 복원
+    else stateByMonth[mk] = defaultState(y,m);                       // 처음 보는 달은 기본값
+  }
   return stateByMonth[mk];
 }
 function countState(map, type){
@@ -514,7 +530,7 @@ function renderCalendar(){
       if(!c) st.set(k, 'work');
       else if(c === 'work') st.set(k, 'leave');
       else st.delete(k);
-      renderCalendar(); compute();
+      saveState(); renderCalendar(); compute();
     });
     grid.appendChild(cell);
   }
@@ -631,7 +647,7 @@ document.getElementById("modeManual").onclick = ()=>{
 
 document.getElementById("selFuture").onclick = ()=>{
   stateByMonth[monthKey(viewY,viewM)] = defaultState(viewY, viewM);
-  renderCalendar(); compute();
+  saveState(); renderCalendar(); compute();
 };
 document.getElementById("selAllWeekday").onclick = ()=>{
   const st = getState(viewY, viewM); st.clear();
@@ -642,9 +658,9 @@ document.getElementById("selAllWeekday").onclick = ()=>{
     const k = key(viewY, viewM, d);
     if(dow!==0 && dow!==6 && !holName(k)) st.set(k, 'work');
   }
-  renderCalendar(); compute();
+  saveState(); renderCalendar(); compute();
 };
-document.getElementById("clearSel").onclick = ()=>{ getState(viewY, viewM).clear(); renderCalendar(); compute(); };
+document.getElementById("clearSel").onclick = ()=>{ getState(viewY, viewM).clear(); saveState(); renderCalendar(); compute(); };
 
 /* ---------- 공휴일 직접 등록 ---------- */
 function renderChList(){
@@ -686,6 +702,7 @@ document.getElementById("chAdd").onclick = ()=>{
   const [yy,mm] = d.split("-").map(Number);
   const st = getState(yy, mm-1);
   st.delete(d);
+  saveState();
   dEl.value = ""; nEl.value = "";
   renderChList(); renderCalendar(); compute();
 };
