@@ -167,6 +167,8 @@
   .cell.past { opacity: .42; }
   .cell.selected { background: var(--red-soft); border-color: var(--red); }
   .cell.selected .num { color: #c0392b; }
+  .cell.leave { background: #e3f1fb; border-color: var(--blue); }
+  .cell.leave .num { color: #2b6ea5; }
   .cell.today { box-shadow: 0 0 0 2px var(--yellow) inset; }
   .cell .dot {
     position: absolute; top: 6px; right: 6px; width: 14px; height: 14px;
@@ -175,6 +177,8 @@
   }
   .cell.selected .dot { background: var(--good); border-color: var(--good); }
   .cell.selected .dot::after { content: "✓"; }
+  .cell.leave .dot { background: var(--blue); border-color: var(--blue); font-size:8px; }
+  .cell.leave .dot::after { content: "연"; }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
   .sw { width: 13px; height: 13px; border-radius: 5px; display: inline-block; }
@@ -301,14 +305,20 @@
         <div class="row">
           <div class="field">
             <label>남은 근무일수</label>
-            <input type="number" id="manualDays" min="1" step="1" value="9" />
+            <input type="number" id="manualDays" min="0" step="1" value="9" />
+          </div>
+          <div class="unit">일</div>
+          <div class="field">
+            <label>쓸 연차</label>
+            <input type="number" id="manualLeave" min="0" step="1" value="0" />
           </div>
           <div class="unit">일</div>
         </div>
+        <div class="note">연차 1일은 <b>8시간</b> 채운 것으로 계산하고, 그 날은 근무일에서 빼요.</div>
       </div>
       <div id="autoBox">
-        <div class="note">캘린더에서 <b>체크된 날</b>이 남은 근무일이에요. 기본은 <b>내일부터</b>의 평일이 선택돼요. 연차·반차·이미 근무한 날은 클릭해서 빼거나 더하세요.</div>
-        <div class="note" style="margin-top:6px;">현재 선택: <b id="autoCount">–</b>일</div>
+        <div class="note">캘린더에서 날짜를 클릭하면 <b>근무일 → 연차 → 해제</b> 순으로 바뀌어요. 기본은 <b>내일부터</b>의 평일이 근무일로 잡혀요. 연차 1일은 <b>8시간</b> 채운 것으로 처리돼요.</div>
+        <div class="note" style="margin-top:6px;">현재 선택: <b id="autoCount">–</b></div>
       </div>
     </div>
 
@@ -331,7 +341,8 @@
         <button id="clearSel">전체 해제</button>
       </div>
       <div class="legend">
-        <span><i class="sw" style="background:var(--good)"></i>근무일(선택)</span>
+        <span><i class="sw" style="background:var(--good)"></i>근무일</span>
+        <span><i class="sw" style="background:var(--blue)"></i>연차</span>
         <span><i class="sw" style="background:var(--yellow)"></i>오늘</span>
         <span><i class="sw" style="background:var(--red)"></i>공휴일</span>
         <span style="opacity:.5"><i class="sw" style="background:var(--bg);border:1px solid var(--line)"></i>지난날</span>
@@ -369,15 +380,16 @@ const TODAY = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 let viewY = now.getFullYear();
 let viewM = now.getMonth();
 let mode = "auto";
-const selByMonth = {};
+// 월별 날짜 상태: Map(key -> 'work' | 'leave'), 없으면 미선택
+const stateByMonth = {};
 
 function pad(n){ return String(n).padStart(2,"0"); }
 function key(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
 function monthKey(y,m){ return `${y}-${m}`; }
 
-/* 기본 선택: 내일부터(오늘 제외) 평일 & 공휴일 아님 */
-function defaultSelection(y,m){
-  const set = new Set();
+/* 기본 상태: 내일부터(오늘 제외) 평일 & 공휴일 아님 → 'work' */
+function defaultState(y,m){
+  const map = new Map();
   const days = new Date(y, m+1, 0).getDate();
   for(let d=1; d<=days; d++){
     const date = new Date(y,m,d);
@@ -386,14 +398,17 @@ function defaultSelection(y,m){
     const isWeekend = dow===0 || dow===6;
     const isHoliday = !!HOLIDAYS[k];
     const isTodayOrPast = date <= TODAY;   // 오늘 포함 이전은 제외
-    if(!isWeekend && !isHoliday && !isTodayOrPast) set.add(k);
+    if(!isWeekend && !isHoliday && !isTodayOrPast) map.set(k, 'work');
   }
-  return set;
+  return map;
 }
-function getSel(y,m){
+function getState(y,m){
   const mk = monthKey(y,m);
-  if(!selByMonth[mk]) selByMonth[mk] = defaultSelection(y,m);
-  return selByMonth[mk];
+  if(!stateByMonth[mk]) stateByMonth[mk] = defaultState(y,m);
+  return stateByMonth[mk];
+}
+function countState(map, type){
+  let n=0; for(const v of map.values()) if(v===type) n++; return n;
 }
 
 /* ---------- 캘린더 렌더 ---------- */
@@ -401,7 +416,7 @@ function renderCalendar(){
   document.getElementById("calTitle").textContent = `${viewY}년 ${viewM+1}월`;
   const grid = document.getElementById("calGrid");
   grid.innerHTML = "";
-  const sel = getSel(viewY, viewM);
+  const st = getState(viewY, viewM);
   const firstDow = new Date(viewY, viewM, 1).getDay();
   const days = new Date(viewY, viewM+1, 0).getDate();
 
@@ -421,7 +436,9 @@ function renderCalendar(){
     if(HOLIDAYS[k]) cell.classList.add("sun");
     if(date < TODAY) cell.classList.add("past");
     if(date.getTime() === TODAY.getTime()) cell.classList.add("today");
-    if(sel.has(k)) cell.classList.add("selected");
+    const cur = st.get(k);
+    if(cur === 'work') cell.classList.add("selected");
+    if(cur === 'leave') cell.classList.add("leave");
 
     const num = document.createElement("div");
     num.className = "num";
@@ -438,13 +455,18 @@ function renderCalendar(){
     dot.className = "dot";
     cell.appendChild(dot);
 
+    // 클릭 순환: 미선택 → 근무 → 연차 → 미선택
     cell.addEventListener("click", ()=>{
-      if(sel.has(k)) sel.delete(k); else sel.add(k);
+      const c = st.get(k);
+      if(!c) st.set(k, 'work');
+      else if(c === 'work') st.set(k, 'leave');
+      else st.delete(k);
       renderCalendar(); compute();
     });
     grid.appendChild(cell);
   }
-  document.getElementById("autoCount").textContent = sel.size;
+  const wd = countState(st, 'work'), lv = countState(st, 'leave');
+  document.getElementById("autoCount").textContent = `근무 ${wd}일 · 연차 ${lv}일`;
 }
 
 /* ---------- 계산 ---------- */
@@ -481,35 +503,62 @@ function compute(){
     progBox.style.display = "none";
   }
 
-  let workdays = (mode==="auto") ? getSel(viewY, viewM).size : val("manualDays");
+  let workdays, leaveDays;
+  if(mode === "auto"){
+    const st = getState(viewY, viewM);
+    workdays = countState(st, 'work');
+    leaveDays = countState(st, 'leave');
+  } else {
+    workdays = val("manualDays");
+    leaveDays = val("manualLeave");
+  }
+
+  // 연차: 1일당 8시간(480분) 채워짐 → 잔여시간에서 차감
+  const leaveMin = leaveDays * 480;
+  const workTarget = totalMin - leaveMin;   // 실제 근무로 채워야 할 시간
 
   document.getElementById("mRemain").textContent = fmtHM(totalMin);
-  document.getElementById("mDays").textContent = workdays + "일";
-  document.getElementById("capDays").textContent = "남은 " + workdays + "일";
+  document.getElementById("mDays").textContent = `근무 ${workdays}일` + (leaveDays>0 ? ` · 연차 ${leaveDays}일` : "");
+  document.getElementById("capDays").textContent = `남은 근무 ${workdays}일`;
 
   const perDayEl = document.getElementById("perDay");
   const eightEl = document.getElementById("mEight");
   const slackEl = document.getElementById("mSlack");
   const slackChip = document.getElementById("slackChip");
   const warn = document.getElementById("warnNote");
+  const leavePart = leaveDays>0 ? ` (연차 ${leaveDays}일이 ${fmtHM(leaveMin)}를 채워줘요)` : "";
 
   if(workdays <= 0){
     perDayEl.innerHTML = "– <small>시간</small>";
     eightEl.textContent = "–"; slackEl.textContent = "–";
-    warn.innerHTML = "남은 근무일수가 <b>0일</b>이에요. 캘린더에서 근무일을 선택하거나 직접 입력하세요.";
+    if(leaveDays>0 && workTarget<=0){
+      warn.innerHTML = `남은 근무일이 <b>0일</b>인데, 연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 잔여 ${fmtHM(totalMin)}가 모두 채워져요. 더 일 안 해도 돼요! 🎉`;
+    } else {
+      warn.innerHTML = "남은 <b>근무일</b>이 0일이에요. 캘린더에서 근무일을 선택하거나 직접 입력하세요." + leavePart;
+    }
     return;
   }
 
-  const perDayMin = totalMin / workdays;
+  if(workTarget <= 0){
+    perDayEl.innerHTML = `0<small>시간</small> 0<small>분</small>`;
+    eightEl.textContent = `0일`;
+    slackChip.childNodes[0].textContent = "8시간 대비 여유";
+    slackEl.textContent = fmtHM(workdays*480);
+    slackEl.style.color = "var(--good)";
+    warn.innerHTML = `연차 ${leaveDays}일(${fmtHM(leaveMin)})만으로 잔여 ${fmtHM(totalMin)}가 다 채워져요. 남은 근무일엔 사실상 일 안 해도 돼요! 🎉`;
+    return;
+  }
+
+  const perDayMin = workTarget / workdays;
   let phh = Math.floor(perDayMin/60);
   let pmm = Math.round(perDayMin - phh*60);
   if(pmm===60){ phh+=1; pmm=0; }
   const decimal = (perDayMin/60).toFixed(2);
   perDayEl.innerHTML = `${phh}<small>시간</small> ${pmm}<small>분</small>`;
 
-  eightEl.textContent = `약 ${(totalMin/480).toFixed(1)}일`;
+  eightEl.textContent = `약 ${(workTarget/480).toFixed(1)}일`;
 
-  const slack = workdays*480 - totalMin;
+  const slack = workdays*480 - workTarget;
   if(slack >= 0){
     slackChip.childNodes[0].textContent = "8시간 대비 여유";
     slackEl.textContent = fmtHM(slack);
@@ -521,9 +570,9 @@ function compute(){
   }
 
   if(perDayMin > 480){
-    warn.innerHTML = `하루 권장 근무가 <b>8시간</b>을 넘어요 (약 ${decimal}시간). 근무일을 더 확보하거나 일정을 앞당기는 게 좋아요!`;
+    warn.innerHTML = `하루 권장 근무가 <b>8시간</b>을 넘어요 (약 ${decimal}시간). 근무일·연차를 더 확보하거나 일정을 앞당기는 게 좋아요!` + leavePart;
   } else {
-    warn.innerHTML = `매일 <b>${phh}시간 ${pmm}분</b>(약 ${decimal}시간)씩 일하면 이달 잔여 근무시간을 딱 맞게 채워요. A je to! 🛠️`;
+    warn.innerHTML = `매일 <b>${phh}시간 ${pmm}분</b>(약 ${decimal}시간)씩 일하면 이달 잔여 근무시간을 딱 맞게 채워요.${leavePart} A je to! 🛠️`;
   }
 }
 
@@ -549,23 +598,23 @@ document.getElementById("modeManual").onclick = ()=>{
 };
 
 document.getElementById("selFuture").onclick = ()=>{
-  selByMonth[monthKey(viewY,viewM)] = defaultSelection(viewY, viewM);
+  stateByMonth[monthKey(viewY,viewM)] = defaultState(viewY, viewM);
   renderCalendar(); compute();
 };
 document.getElementById("selAllWeekday").onclick = ()=>{
-  const sel = getSel(viewY, viewM); sel.clear();
+  const st = getState(viewY, viewM); st.clear();
   const days = new Date(viewY, viewM+1, 0).getDate();
   for(let d=1; d<=days; d++){
     const date = new Date(viewY, viewM, d);
     const dow = date.getDay();
     const k = key(viewY, viewM, d);
-    if(dow!==0 && dow!==6 && !HOLIDAYS[k]) sel.add(k);
+    if(dow!==0 && dow!==6 && !HOLIDAYS[k]) st.set(k, 'work');
   }
   renderCalendar(); compute();
 };
-document.getElementById("clearSel").onclick = ()=>{ getSel(viewY, viewM).clear(); renderCalendar(); compute(); };
+document.getElementById("clearSel").onclick = ()=>{ getState(viewY, viewM).clear(); renderCalendar(); compute(); };
 
-["totRegHours","totRegMins","totOtHours","totOtMins","regHours","regMins","otHours","otMins","manualDays"].forEach(id=>{
+["totRegHours","totRegMins","totOtHours","totOtMins","regHours","regMins","otHours","otMins","manualDays","manualLeave"].forEach(id=>{
   document.getElementById(id).addEventListener("input", compute);
 });
 
